@@ -10,7 +10,7 @@ entity main is
            sw : in STD_LOGIC_VECTOR (15 downto 0);
            cat : out STD_LOGIC_VECTOR (6 downto 0);
            an : out STD_LOGIC_VECTOR (3 downto 0);
-           led:out std_logic);
+           led:out std_logic_vector (7 downto 0));
 end main;
 
 architecture Behavioral of main is
@@ -35,16 +35,6 @@ component dataMemory is
            dataOut1 : out STD_LOGIC_VECTOR (31 downto 0);
            dataOut2 : out STD_LOGIC_VECTOR (31 downto 0));
 end component;
-
-component aluFloat is
-    Port ( clk : in STD_LOGIC;
-           num1 : in STD_LOGIC_VECTOR (31 downto 0);
-           num2 : in STD_LOGIC_VECTOR (31 downto 0);
-           op : in STD_LOGIC;
-           start:in std_logic;
-           res : out STD_LOGIC_VECTOR (31 downto 0);
-           working:out std_logic);
-end component;
 ----------------------
 
 ----signals------------------------
@@ -65,8 +55,22 @@ debouncerDL:debouncer port map(clk=>clk, btn=>XbtnD, dbOut=>btnD);
 debouncerLL:debouncer port map(clk=>clk, btn=>XbtnL, dbOut=>btnL);
 ssdL:ssd port map(clk=>clk, num=>display, an=>an, cat=>cat);
 
-rom:dataMemory port map(clk=>btnU, reset=>sw(0), dataOut1=>num1, dataOut2=>num2);
-alu:aluFloat port map(clk=>btnD, num1=>num1, num2=>num2, op=>sw(0), res=>result, working=>led,start=>btnL);
+rom:dataMemory port map(clk=>btnU, reset=>sw(2), dataOut1=>num1, dataOut2=>num2);
+alu:entity work.aluFloat port map(
+	clk=>btnD,
+	start=>sw(1),
+	op=>sw(0),
+	reset=>'0',
+	
+	num1=>num1, 
+	num2=>num2, 
+	 
+	res=>result, 
+	working=>led(0),
+	infinityFlag=>led(1),
+	zeroFlag=>led(2),
+	nanFlag=>led(3)
+	);
 
 process(sw)
 begin
