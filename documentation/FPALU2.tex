@@ -116,7 +116,14 @@
      \item 23 bits for the mantissa
     \end{itemize}
 
-    \newpage
+    The IEEE 754 standard also mentions the format for special values. There are five such numbers:
+    \begin{itemize}
+     \item Zero --- All exponent bits and all mantissa bits are set to $0$. Can be either positive or negative depending on the sign bit.
+     \item Infinity --- All exponent bits are set to $1$, and all mantissa bits are set to $0$. Can be either positive or negative depending on the sign bit.
+     \item NaN (Not a Number) --- All exponent bits are set to $1$, and at least one mantissa bit is set to $1$. The sign bit is not taken into consideration.
+    \end{itemize}
+
+
     \section{Development Plan}
     \subsection{Development Overview}
     It is proposed that by each project meeting a different subsection of the Floating Point ALU will be completed, to be tested at the laboratory, and any irregularities in behaviour to be elliminated. By the end of the semester, the whole project must be completed and must be presented by the last week.
@@ -138,16 +145,19 @@
 
     \newpage
     \section{Floating Point ALU Structure}
-    The FP ALU is composed of the three parts - the adder, the multiplier, and a multiplexer to change between them. The inputs are the two 32 bit IEEE-754 numbers, the operation to be performed, and a start bit to start the addition/multiplication.
+    The Operation of the Floating Point ALU is composed of three steps:
+    \begin{enumerate}
+     \item Check the validity of the inputs and the operation to be performed, and either proceed to the next step, or write the appropriate value and end the algorithm.
+     \item Perform the operation, with all required steps.
+     \item Realign the number to the IEEE 754 standard, and check for exponent overflow or underflow.
+    \end{enumerate}
 
-    The outputs are the resulting number, and a bit to signal when the ALU is working and when the operation is over.
+    In order to implement the Floating Point ALU, we will use Registers, Comparators, a smaller ALU capable of integer operations, a Wallace Tree Multiplier, and the Control Unit, implemented as a Finite State Machine.
 
+    We can speed up the circuit by utilizing multiple comparators. For this implementation, we will use two comparators.
 
-    \centerline{\includegraphics[scale=0.75]{ALUBig.pdf}}
-
-    \newpage
-    \section{Floating Point Adder}
     \subsection{Algorithm}
+    \subsubsection{Floating Point Adder}
     The Floating point Adder takes as inputs the two numbers, A and B, which are divided into their respective sign, exponent, and mantissa (with a 1 implicitly placed on the 24th bit.
 
     First, we compare the exponents, and the mantissa of the number with the smaller exponent is shifted to the right and its exponent is incremented until the exponents are equal. This way, the numbers are aligned to the same exponent.
@@ -156,19 +166,24 @@
 
     Finally, we realign the resulting number to the IEEE-754 standard. If the mantissa has become too large, and there is a '1' on the 25th bit, we shift the result right and increment the exponent. If the mantissa is too small, we shift left and decrement the exponent until there is a '1' on exactly the 24th bit.
 
-    We also check for if the mantissa is equal to 0 and check for overflow and underflow of the exponent. If the mantissa is 0 or if we have an underflow of the exponent, we make the exponent and mantissa 0, so that there are only two values for the number 0. If there is an overflow of the exponent, we set the exponent to the maximum possible value and the mantissa to 0, for a standard infinity value.
+    \subsubsection{Floating Point Multiplier}
+    The Floating Point Multiplier takes as inputs the two numbers, A and B, which are divided into their respective sign, exponent, and mantissa (with a 1 implicitly placed on the 24th bit.
 
-    \newpage
+    First, we add the two exponents together and subtract 127 from the resulting sum. This is because the exponents are implicitly stored as (127 + exponent).
+
+    Next, we perform the multiplication on the mantissas. We can use a Wallace Tree Multiplier to perform the multiplication in a single clock cycle, which simplifies the circuit significantly.
+
+    Since we use a standard 32 bit Wallace Tree Multiplier and the mantissa has only 24 bits, we extend with zero to the right. The two mantissas will always start with a 1 on the MSB, and by multiplying them, the resulting number will also have a 1 on the 64th bit. We simply select the next most significatn 23 bits for the result mantissa, with no need to shift and align the number.
+
+
     \subsection{Design}
-    In order to implement the Floating Point Adder, we will use a 32 bit ALU, capable of addition, subtraction, incrementing, and decrementing. A comparator will also be needed which which can tell the greater number or whether they are equal. We will also use registers to store intermediate results, and a control unit to switch between the inputs and operations of the ALU.
-
-    \centerline{\includegraphics[scale=0.75, trim= 0cm 12cm 0cm 0cm]{adder.pdf}}
-
-    \newpage
-    \subsection{Implementation}
-    The top level code was written in a structural style, while the simpler components were written behaviourally. Every component was implement separately to match the specifications mentioned above.\\
     \subsubsection{ALU}
-    \centerline{\includegraphics[scale=0.75]{adderALU.pdf}}
+    \begin{figure}[h]
+     \centering
+     \caption{Simple Integer ALU}
+     \includegraphics[scale=0.75]{adderALU.pdf}
+    \end{figure}
+
     The ALU takes as input the two numbers, and a selection for which operation to be performed. Since it performs elementary operations, this is a combinational logic circuit, and requires no clock.\\
     The ouputs are the result of the operation, and an additional carry out bit, marked as \textit{cout}.\\
     The ALU is capable of performing four operations:
@@ -178,114 +193,139 @@
      \item Increment \textit{result = numA + 1}
      \item Decrement \textit{result = numA - 1}
     \end{itemize}
-    In case of any overflow or underflow, the \textit{cout} bit is set to \textit{1}, otherwise it remains \textit{0}.\\
+    In case of any overflow or underflow, the $cout$ bit is set to $1$, otherwise it remains $0$.
+
     \newpage
     \subsubsection{Comparator}
-    The comparator takes as input two numbers, and the outputs \textit{eq} and \textit{greater} are set to $1$ if $numA > numB$ and if $numA = numB$ respectively.\\
-    \centerline{\includegraphics{comparator.pdf}}
+    The comparator takes as input two numbers, and the outputs $eq$ and $greater$ are set to $1$ if $numA > numB$ and if $numA = numB$ respectively.\\
+    \begin{figure}[h]
+     \centering
+     \caption{Integer Comparator}
+     \includegraphics{comparator.pdf}
+    \end{figure}
+
+
+    \subsubsection{Multiplier}
+    The mantissa multiplier was implemented as a wallace tree, capable of performing 32 bit multiplication. The result is on 64 bits. The desing was created recursively, starting from the 4 bit wallace tree multiplier. Each number is split into $Low$ and $High$, and then multiplied, shifted, and added accordingly.
+    \begin{figure}[h]
+     \centering
+     \caption{Structure of Wallace Tree Multiplier}
+     \includegraphics[scale=0.75]{multiplier.pdf}
+    \end{figure}
+
+    The entity for the Components used is available \hyperref[sec:components]{here}.
 
     \subsubsection{Control Unit}
     The Control Unit is the most complex part of the floating point adder. It is a finite state machine which controls all the select signals for the various components of the design. It switches states synchronously, and based on the state and results from differing components, sets the select signals for the multiplexers, the write signals for the registers, and the operation for the ALU.
 
-    The Control Unit is a finite state machine with five states:
+    The Control Unit is a finite state machine with $22$ states, divided into $6$ groups:
     \begin{itemize}
-      \item idle\_state:\\
+      \item Idle: $idle\_state$\\
       Machine is idle and not busy performing any operation.
-      \item compare\_state:\\
-      Compare the two exponents and shift the mantissa until they are equal.
-      \item add\_state:\\
-      Add the two mantissas together.
-      \item align\_state:\\
-      Realign the resulting number to match the IEEE-754 standard.
-      \item verify\_overflow\_state:\\
-      Check for overflow and write the corresponding result.
-      \item verify\_underflow\_state:\\
-      Check for underflow and write the corresponding result.
+      \item Check Input: $check\_nan\_1,\ check\_nan\_2,\ check\_zero,\ valid\_op$\\
+      Check the validity of the inputs and either proceed with the algorithm or write the result directly.
+      \item Perform FP Addition: $fpAdd\_compare,\ fpAdd\_add$\\
+      Shift mantissa and increment exponents until they are equal, then add the mantissas.
+      \item Perform FP Multiplication: $fpMul\_add,\ fpMul\_sub127,\ fpMul_mul$\\
+      Add the two exponents together, subtract $127$ from the result, and multiply the mantissas.
+      \item Realign to Standard: $align,\ verify\_exponent\_overflow, verify\_exponent\_underflow$\\
+      Realign mantissa to standard and check for overflow or underflow in the exponent.
+      \item Write Special: $writeNan,\ writeInfinityXor,\ writeInfinityPos,\ writeInfinityNeg,\\ writeZeroXor,\ writeZeroPos,\ writeZeroNeg,\ writeNum1,\ writeNum2$\\
+      Used when operation is invalid.
     \end{itemize}
 
-    The entity for the floating point adder, and the components used is available \hyperref[sec:adder]{here}.
+    \begin{figure}[htbp]
+    \centering
+    \caption{The Control Unit transition diagram}
+    \includegraphics[scale=0.7]{dot.pdf}
+    \end{figure}
 
-
-
-    \newpage
-    \section{Floating Point Multiplier}
-    \subsection{Algorithm}
-    The Floating Point Multiplier takes as inputs the two numbers, A and B, which are divided into their respective sign, exponent, and mantissa (with a 1 implicitly placed on the 24th bit.
-
-    First, we add the two exponents together and subtract 127 from the resulting sum. This is because the exponents are implicitly stored as (127 + exponent).
-
-    Next, we perform the multiplication on the mantissas. We can use a Wallace Tree Multiplier to perform the multiplication in a single clock cycle, which simplifies the circuit significantly.
-
-    Since we use a standard 32 bit Wallace Tree Multiplier and the mantissa has only 24 bits, we extend with zero to the right. The two mantissas will always start with a 1 on the MSB, and by multiplying them, the resulting number will also have a 1 on the 64th bit. We simply select the next most significatn 23 bits for the result mantissa, with no need to shift and align the number.
-
-    Simmilarly to the adder, we apply the same standardisation steps for 0 or infinity. If the mantissa is 0, or there is an exponent underflow, we set all the exponent and mantissa bits to 0. If there is an exponent overflow, we set all exponent bits to 1, and all mantissa bits to 0.
-
-    By using the steps described above, we can perform floating point multiplication in at most 5 clock cycles.
+    The entity for the Control Unit is available \hyperref[sec:controlUnit]{here}.
 
     \newpage
-    \subsection{Design}
-    In order to implement the Floating Point Multiplier, we will use a dedicated exponent adder to perform the exponent addition and subtracting 127, a 32 bit Wallace Tree Multiplier, and a Comparator. We also use registers to store intermediate values, and a control unit to give signals throughout the circuit.
-    \centerline{\includegraphics[scale=0.75, trim= 0cm 12cm 0cm 0cm]{fpMultiplier.pdf}}
+    \subsubsection{Top Level Design}
+    Following the design specifications, all the components were connected. A separate register was used for each part of the inputs and outputs, and two comparators were used to speed up the process. Multiplexers were used to switch between the inputs to the different components. Since there is more space in the register than is needed to store the mantissa, it is stored left aligned, and padded with $0$. Only the most significant bits from the mantissa register and multiplier result are used, ensuring there is never a mantissa overflow.
+
+    \begin{figure}[htbp]
+    \centering
+    \caption{The top level design}
+    \includegraphics[scale=0.5]{fpALU.pdf}
+    \end{figure}
+
 
     \newpage
     \subsection{Implementation}
-    Simmilarly to the floating point adder, the top level was also written in a structural style, with the smaller components being written behaviourally.
+    The code for the Comparator, ALU, Control Unit and Registers was written in a behavioural stlye. The code for the Multiplier, and Top Level was written in a structural stlye.
 
-    \subsubsection{Comparator}
-    The comparator behaves the same as the one used for the adder, except it is capable of handling 64 bit numbers. It is used for checking the result for overflow or underflow in the final states of the process.
-
-    \subsubsection{Exponent Adder}
-    The exponent adder is a simple combinational logic circuit. It takes two 32 bit numbers, $exponent1$ and $exponent2$, and performs the operation\\
-    \hspace*{1.0cm}$result <= exponent1 + exponent2 - 127$.
-
-    \subsubsection{Multiplier}
-    The mantissa multiplier was implemented as a wallace tree, capable of performing 32 bit multiplication. The result is on 64 bits. The desing was created recursively, starting from the 4 bit wallace tree multiplier. Each number is split into \textit{Low} and \textit{High}, and then multiplied, shifted, and added accordingly.
-    \centerline{\includegraphics[scale=0.75]{multiplier.pdf}}
-
-    \subsubsection{Control Unit}
-    The Control Unit is similar to that of the floating point adder, though somewhat simpler. It is a finite state machine which controls all the select signals for the various components of the design. It switches states synchronously, and based on the state and results from differing components, sets just the select signals for the multiplexers and the write signals for the registers, with there being no operation signals.
-
-    As oposed to the adder, which requires shifting the result an unknown amount of bits, the floating point multiplier will always complete the operation in at most 6 clock cycles.
-
-    The Control Unit is a finite state machine with five states:
+    For ease of implementation, separate register components were written with a $4:1$, and an $8:1$ multiplexer included.\\
+    The Top Level Design is mostly composed of port maps, with a couple of multiplexers for the ALU and Comparators.\\
+    The Control Unit is a Finite State Machine composed of two processes:
     \begin{itemize}
-      \item idle\_state:\\
-      Machine is idle and not busy performing any operation.
-      \item add\_state:\\
-      The exponent addition is performed\\
-      $(exponentRes <= exponent1 + exponent2 - 127)$.
-      \item multiply\_state:\\
-      The two mantissas are multiplied together.
-      \item align\_state:\\
-      Realign the resulting number to match the IEEE-754 standard.
-      \item verify\_overflow\_state:\\
-      Check for overflow and write the corresponding result.
-      \item verify\_underflow\_state:\\
-      Check for underflow and write the corresponding result.
+     \item The first porcess calculates the next state of the machine. The switching between states is done synchronously. When checking the inputs, internal flags are set to $1$ or $0$, These flags and the operation input then form an address in a ROM which gives the next state.
+     \item The second process represents a multitude of multiplexers and simple logic gates which caluclate the output signals based on the current state and the inputs given. This process is asynchronous.
     \end{itemize}
 
-    The entity for the floating point multiplier, and the components used is available \hyperref[sec:multiplier]{here}.
+    The code for the ROM is available \hyperref[sec:ROM]{here}.
 
+
+    \section{Testing}
+    Testbenches were written for the Addition Operation and the Multiplication Operation. Multiple combinations of inputs were used, and the machines ability to detect wrong inputs was also tested.\\
+    The inputs are captured immediately as the start value is read as $1$ on a rising edge of the clock. A change in inputs afterwards will not affect the performance.\\
+    While the machine is busy, the working bit is set to $1$, otherwise, while it is idle it remains $0$. Once the algorithm is finished and the working bit is set to $0$, the output will remain stable. If the machine is started again, the output will still remain stable for at least $one$ clock cycle. Afterwards, it cannot be guaranteed what will appear on the output while the working flag is active.
+
+    \subsection{Addition}
+    \subsubsection{Regular Behaviour}
+    The FP ALU performs as expected under regular circumstances. It is performs as expected when adding positive numbers, when adding negative numbers, and when adding zero to a number.\\
+    \includegraphics[scale=0.5]{addRegular.png}
 
     \newpage
-    \section{Code}
-    \subsection{Floating Point Adder}
-    \label{sec:adder}
-    \subsubsection{Top level}
-    \begin{lstlisting}
-    entity adderFloat is
-    Port ( clk : in STD_LOGIC;
-           reset:in STD_LOGIC;
-           start:in std_logic;
-           num1:in std_logic_vector(31 downto 0);
-           num2:in std_logic_vector(31 downto 0);
-           res:out std_logic_vector(31 downto 0);
-           dbState:out std_logic_vector(3 downto 0);
-           working : out STD_LOGIC);
-    end adderFloat;
-    \end{lstlisting}
+    \subsubsection{Special Cases}
+    Based on the ROM in the Control Unit, the special cases for addition are as follows:
+    \begin{itemize}
+     \item $(+\infty) + (+\infty) = +\infty$
+     \item $(+\infty) + (-\infty) = NaN$
+     \item $(+\infty) + (\pm0) = +\infty$
+     \item $(\pm \infty) + x = \pm \infty$
+     \item $(-\infty) + (-\infty) = -\infty$
+     \item $(-\infty) + (\pm0) = -\infty$
+     \item $(\pm0) + (\pm0) = +0$
+     \item $(\pm0) + (\mp0) = +0$
+     \item $(\pm0) + x = +0$
+    \end{itemize}
+    Also including their reciprocals.
+    These special cases were tested, and the correct result was given.\\
+    \includegraphics[scale=0.5]{addSpecial.png}
 
-    \subsubsection{ALU}
+    The code for the Add Testebench is available \hyperref[sec:AddTest]{here}.
+
+    \subsection{Multiplication}
+    \subsubsection{Regular Beheviour}
+    Under regular circumstances the multiplication is performed correctly. When multiplying numbers with the same sign, the resulting sign is positive, and when multiplying with 0, the result will also be 0, with the same logic applied for the sign.\\
+    \includegraphics[scale=0.5]{mulRegular.png}
+
+    \newpage
+    \subsubsection{Special Cases}
+    Based on the ROM in the Control Unit, the special cases for addition are as follows:
+    \begin{itemize}
+     \item $(\pm\infty) * (\pm\infty) = +\infty$
+     \item $(\pm\infty) * (\mp\infty) = -\infty$
+     \item $(\pm\infty) * (\pm0) = NaN$
+     \item $(\pm\infty) * (\mp0) = NaN$
+     \item $(\pm\infty) * x = (XOR)\infty$
+     \item $(-\infty) + (\pm0) = -\infty$
+     \item $(\pm0) * (\pm0) = +0$
+     \item $(\pm0) * (\mp0) = -0$
+     \item $(\pm0) * x = (XOR)0$
+    \end{itemize}
+    Also including their reciprocals.
+    These special cases were tested, and the correct result was given.\\
+    \includegraphics[scale=0.5]{mulSpecial.png}
+
+    The code for the Mul Testebench is available \hyperref[sec:MulTest]{here}.
+    \newpage
+    \section{Code}
+    \label{sec:components}
+    \subsection{ALU}
     \begin{lstlisting}
     entity alu32bit is
     Port (
@@ -297,7 +337,7 @@
     end alu32bit;
     \end{lstlisting}
 
-    \subsubsection{Comparator}
+    \subsection{Comparator}
     \begin{lstlisting}
     entity comparator32bit is
     Port ( numA : in STD_LOGIC_vector(31 downto 0);
@@ -307,58 +347,7 @@
     end comparator32bit;
     \end{lstlisting}
 
-    \subsubsection{Control Unit}
-    \begin{lstlisting}
-    entity fpAdderControlUnit is
-	Port (
-		clk:in std_logic;
-		reset:in std_logic;
-
-		comparatorEq:in std_logic;
-		comparatorGreater:in std_logic;
-
-		outSign1_0:in std_logic;
-		outSign2_0:in std_logic;
-		outMantissaRes24:in std_logic;
-		outMantissaRes23:in std_logic;
-
-		start:in std_logic;
-
-		writeSign1:out std_logic;
-		writeSign2:out std_logic;
-		writeSignRes:out std_logic;
-
-		writeExponent1:out std_logic;
-		writeExponent2:out std_logic;
-		writeExponentRes:out std_logic;
-
-		writeMantissa1:out std_logic;
-		writeMantissa2:out std_logic;
-		writeMantissaRes:out std_logic;
-
-		selectSign1:out std_logic_vector(1 downto 0);
-		selectExponent1:out std_logic_vector(1 downto 0);
-		selectMantissa1:out std_logic_vector(1 downto 0);
-
-		selectSign2:out std_logic_vector(1 downto 0);
-		selectExponent2:out std_logic_vector(1 downto 0);
-		selectMantissa2:out std_logic_vector(1 downto 0);
-
-		selectSignRes:out std_logic_vector(1 downto 0);
-		selectExponentRes:out std_logic_vector(1 downto 0);
-		selectMantissaRes:out std_logic_vector(1 downto 0);
-
-		dbState:out std_logic_vector(3 downto 0);
-		working:out std_logic;
-
-		comparatorSelect:out std_logic_vector(2 downto 0);
-		alu32bitSelect:out std_logic_vector(2 downto 0);
-		alu32bitOp:out std_logic_vector(1 downto 0)
-	);
-    end fpAdderControlUnit;
-    \end{lstlisting}
-
-    \subsubsection{Register with multiplexer}
+    \subsection{Register with multiplexer}
     \begin{lstlisting}
      entity register32bitW4x1Mux is
     Port ( A : in STD_LOGIC_VECTOR (31 downto 0);
@@ -372,33 +361,7 @@
     end register32bitW4x1Mux;
     \end{lstlisting}
 
-    \newpage
-    \subsection{Floating Point Multiplier}
-    \label{sec:multiplier}
-    \subsubsection{Top level}
-    \begin{lstlisting}
-    entity multiplierFloat is
-    Port ( clk : in STD_LOGIC;
-		   reset:in STD_LOGIC;
-		   start:in std_logic;
-		   num1:in std_logic_vector(31 downto 0);
-		   num2:in std_logic_vector(31 downto 0);
-		   res:out std_logic_vector(31 downto 0);
-		   dbState:out std_logic_vector(3 downto 0);
-		   working : out STD_LOGIC);
-    end multiplierFloat;
-    \end{lstlisting}
-
-    \subsubsection{Exponent Adder}
-    \begin{lstlisting}
-    entity exponentAdder is
-    Port ( exponent1 : in STD_LOGIC_VECTOR (31 downto 0);
-           exponent2 : in STD_LOGIC_VECTOR (31 downto 0);
-           result: out std_logic_vector(31 downto 0));
-    end exponentAdder;
-    \end{lstlisting}
-
-    \subsubsection{Multiplier}
+    \subsection{Wallace Tree Multiplier}
     \begin{lstlisting}
     entity multiplier32bit is
     Port ( numA : in STD_LOGIC_VECTOR (31 downto 0);
@@ -407,65 +370,233 @@
     end multiplier32bit;
     \end{lstlisting}
 
-    \subsubsection{Control Unit}
+    \newpage
+    \label{sec:controlUnit}
+    \subsection{Control Unit}
     \begin{lstlisting}
-    entity fpMultiplierControlUnit is
-	Port (
-		clk:in std_logic;
-		reset:in std_logic;
+    entity controlUnit is
+    Port (
+      clk : in STD_LOGIC;
+      reset: in std_logic;
+      start:in std_logic;
+      op:in std_logic;
 
-		comparatorEq:in std_logic;
-		comparatorGreater:in std_logic;
-		outMantissaRes63:in std_logic;
+      writeSign1:out std_logic;
+      writeSign2:out std_logic;
+      writeSignRes:out std_logic;
 
-		start:in std_logic;
+      writeExponent1:out std_logic;
+      writeExponent2:out std_logic;
+      writeExponentRes:out std_logic;
 
-		writeSign1:out std_logic;
-		writeSign2:out std_logic;
-		writeSignRes:out std_logic;
+      writeMantissa1:out std_logic;
+      writeMantissa2:out std_logic;
+      writeMantissaRes:out std_logic;
 
-		writeExponent1:out std_logic;
-		writeExponent2:out std_logic;
-		writeExponentRes:out std_logic;
+      selectSign1:out std_logic_vector(1 downto 0);
+      selectExponent1:out std_logic_vector(1 downto 0);
+      selectMantissa1:out std_logic_vector(1 downto 0);
 
-		writeMantissa1:out std_logic;
-		writeMantissa2:out std_logic;
-		writeMantissaRes:out std_logic;
+      selectSign2:out std_logic_vector(1 downto 0);
+      selectExponent2:out std_logic_vector(1 downto 0);
+      selectMantissa2:out std_logic_vector(1 downto 0);
 
-		selectSign1:out std_logic_vector(1 downto 0);
-		selectExponent1:out std_logic_vector(1 downto 0);
-		selectMantissa1:out std_logic_vector(1 downto 0);
+      selectSignRes:out std_logic_vector(2 downto 0);
+      selectExponentRes:out std_logic_vector(2 downto 0);
+      selectMantissaRes:out std_logic_vector(2 downto 0);
 
-		selectSign2:out std_logic_vector(1 downto 0);
-		selectExponent2:out std_logic_vector(1 downto 0);
-		selectMantissa2:out std_logic_vector(1 downto 0);
+      outSign1:in std_logic;
+      outSign2:in std_logic;
+      outSignRes:in std_logic;
+      outMantissaRes31:in std_logic;
 
-		selectSignRes:out std_logic_vector(1 downto 0);
-		selectExponentRes:out std_logic_vector(1 downto 0);
-		selectMantissaRes:out std_logic_vector(1 downto 0);
+      comparator1Select:out std_logic_vector(2 downto 0);
+      comparator1Eq:in std_logic;
+      comparator1Greater:in std_logic;
 
-		dbState:out std_logic_vector(3 downto 0);
-		working:out std_logic;
-		comparatorSelect:out std_logic_vector(2 downto 0)
-	);
-    end fpMultiplierControlUnit;
+      comparator2Select:out std_logic_vector(2 downto 0);
+      comparator2Eq:in std_logic;
+      comparator2Greater:in std_logic;
 
+      alu32bitOp:out std_logic_vector(1 downto 0);
+      alu32bitSelect:out std_logic_vector(2 downto 0);
+      alu32bitCout: in std_logic;
+
+      infinityFlag:out std_logic;
+      zeroFlag:out std_logic;
+      nanFlag:out std_logic;
+
+      working:out std_logic
+    );
+    end controlUnit;
     \end{lstlisting}
 
     \newpage
-    \subsection{ALU Top level}
     \label{sec:aluTop}
+    \subsection{ALU Top level}
     \begin{lstlisting}
     entity aluFloat is
-    Port ( clk : in STD_LOGIC;
-           num1 : in STD_LOGIC_VECTOR (31 downto 0);
-           num2 : in STD_LOGIC_VECTOR (31 downto 0);
-           op : in STD_LOGIC;
-           start:in std_logic;
-           res : out STD_LOGIC_VECTOR (31 downto 0);
-           working:out std_logic);
+    Port (
+        clk : in STD_LOGIC;
+        start:in std_logic;
+        reset:in std_logic;
+        op : in STD_LOGIC;
+
+        num1 : in STD_LOGIC_VECTOR (31 downto 0);
+        num2 : in STD_LOGIC_VECTOR (31 downto 0);
+
+        res : out STD_LOGIC_VECTOR (31 downto 0);
+        working:out std_logic;
+        infinityFlag:out std_logic;
+        zeroFlag:out std_logic;
+        nanFlag:out std_logic
+    );
     end aluFloat;
     \end{lstlisting}
+
+    \label{sec:ROM}
+    \subsection{ROM}
+    \begin{lstlisting}
+    case internalFlags is
+--		internalFlags<=op & infinityPos1 & infinityNeg1 & infinityPos2 & infinityNeg2 &
+--				zeroPos1 & zeroNeg1 & zeroPos2 & zeroNeg2;
+			when "000000000"=>
+				state<=fpAdd_compare;
+
+			-- +infinity + x
+			when b"0_10_10_00_00"=> -- +inf + +inf
+				state<=writeInfinityPos;
+			when b"0_10_01_00_00"=> -- +inf + -inf
+				state<=writeNan;
+			when b"0_10_00_00_10"=> -- +inf + +0
+				state<=writeInfinityPos;
+			when b"0_10_00_00_01"=> -- +inf + -0
+				state<=writeInfinityPos;
+			when b"0_10_00_00_00"=> -- +inf + x
+				state<=writeInfinityPos;
+
+			-- -infinity + x
+			when b"0_01_10_00_00"=> -- -inf + +inf
+				state<=writeNan;
+			when b"0_01_01_00_00"=> -- -inf + -inf
+				state<=writeInfinityNeg;
+			when b"0_01_00_00_10"=> -- -inf + +0
+				state<=writeInfinityNeg;
+			when b"0_01_00_00_01"=> -- -inf + -0
+				state<=writeInfinityNeg;
+			when b"0_01_00_00_00"=> -- -inf + x
+				state<=writeInfinityNeg;
+
+			-- +0 + x
+			when b"0_00_10_10_00"=> -- +0 + +inf
+				state<=writeInfinityPos;
+			when b"0_00_01_10_00"=> -- +0 + -inf
+				state<=writeInfinityNeg;
+			when b"0_00_00_10_10"=> -- +0 + +0
+				state<=writeZeroPos;
+			when b"0_00_00_10_01"=> -- +0 + -0
+				state<=writeZeroPos;
+			when b"0_00_00_10_00"=> -- +0 + x
+				state<=writeNum2;
+
+			-- -0 + x
+			when b"0_00_10_01_00"=> -- -0 + +inf
+				state<=writeInfinityPos;
+			when b"0_00_01_01_00"=> -- -0 + -inf
+				state<=writeInfinityNeg;
+			when b"0_00_00_01_10"=> -- -0 + +0
+				state<=writeZeroPos;
+			when b"0_00_00_01_01"=> -- -0 + -0
+				state<=writeZeroNeg;
+			when b"0_00_00_01_00"=> -- -0 + x
+				state<=writeNum2;
+
+			-- x + special
+			when b"0_00_10_00_00"=> -- x + +inf
+				state<=writeInfinityPos;
+			when b"0_00_01_00_00"=> -- x + -inf
+				state<=writeInfinityNeg;
+			when b"0_00_00_00_10"=> -- x + +0
+				state<=writeNum1;
+			when b"0_00_00_00_01"=> -- x + -0
+				state<=writeNum1;
+
+--		internalFlags<=op & infinityPos1 & infinityNeg1 & infinityPos2 & infinityNeg2 &
+--				zeroPos1 & zeroNeg1 & zeroPos2 & zeroNeg2;
+			when "100000000"=>
+				state<=fpMul_add;
+
+			-- +infinity * x
+			when b"1_10_10_00_00"=> -- +inf * +inf
+				state<=writeInfinityPos;
+			when b"1_10_01_00_00"=> -- +inf * -inf
+				state<=writeInfinityNeg;
+			when b"1_10_00_00_10"=> -- +inf * +0
+				state<=writeNan;
+			when b"1_10_00_00_01"=> -- +inf * -0
+				state<=writeNan;
+			when b"1_10_00_00_00"=> -- +inf * x
+				state<=writeInfinityXor;
+
+			-- -infinity * x
+			when b"1_01_10_00_00"=> -- -inf * +inf
+				state<=writeInfinityNeg;
+			when b"1_01_01_00_00"=> -- -inf * -inf
+				state<=writeInfinityPos;
+			when b"1_01_00_00_10"=> -- -inf * +0
+				state<=writeNan;
+			when b"1_01_00_00_01"=> -- -inf * -0
+				state<=writeNan;
+			when b"1_01_00_00_00"=> -- -inf * x
+				state<=writeInfinityXor;
+
+			-- +0 * x
+			when b"1_00_10_10_00"=> -- +0 * +inf
+				state<=writeNan;
+			when b"1_00_01_10_00"=> -- +0 * -inf
+				state<=writeNan;
+			when b"1_00_00_10_10"=> -- +0 * +0
+				state<=writeZeroPos;
+			when b"1_00_00_10_01"=> -- +0 * -0
+				state<=writeZeroNeg;
+			when b"1_00_00_10_00"=> -- +0 * x
+				state<=writeZeroXor;
+
+			-- -0 * x
+			when b"1_00_10_01_00"=> -- -0 * +inf
+				state<=writeNan;
+			when b"1_00_01_01_00"=> -- -0 * -inf
+				state<=writeNan;
+			when b"1_00_00_01_10"=> -- -0 * +0
+				state<=writeZeroNeg;
+			when b"1_00_00_01_01"=> -- -0 * -0
+				state<=writeZeroPos;
+			when b"1_00_00_01_00"=> -- -0 * x
+				state<=writeZeroXor;
+
+			-- x * special
+			when b"1_00_10_00_00"=> -- x * +inf
+				state<=writeInfinityXor;
+			when b"1_00_01_00_00"=> -- x * -inf
+				state<=writeInfinityXor;
+			when b"1_00_00_00_10"=> -- x * +0
+				state<=writeZeroXor;
+			when b"1_00_00_00_01"=> -- x * -0
+				state<=writeZeroXor;
+
+			when others=>
+				state<=writeNan;
+		end case;
+    \end{lstlisting}
+
+    \newpage
+    \subsection{Testbenches}
+    \label{sec:AddTest}
+    \lstinputlisting[caption=Add Testbench]{code/AddTB.txt}
+
+    \newpage
+    \label{sec:MulTest}
+    \lstinputlisting[caption=Mul Testbench]{code/MulTB.txt}
 
     \newpage
     \section{Bibliography}
